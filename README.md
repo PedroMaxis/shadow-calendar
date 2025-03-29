@@ -10,7 +10,8 @@ Tailwind CSS
 shadcn-ui
 
 Instalação
-shCopy# Clonar repositório
+
+# Clonar repositório
 git clone <SEU_REPOSITORIO_GIT>
 
 # Entrar no diretório
