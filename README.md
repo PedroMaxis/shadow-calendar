@@ -1,38 +1,37 @@
-Agenda Web App 📅
-Descrição
-Aplicação web para gerenciamento de compromissos e eventos pessoais.
-Tecnologias
+# Shadow Calendar
 
-Vite
-TypeScript
-React
-Tailwind CSS
-shadcn-ui
+Shadow Calendar é uma aplicação de calendário minimalista desenvolvida para ajudar usuários a visualizar e gerenciar seus compromissos de forma eficiente.
 
-Instalação
+## 📋 Visão Geral
 
-# Clonar repositório
-git clone <SEU_REPOSITORIO_GIT>
+Shadow Calendar é um projeto de front-end que oferece uma interface limpa e intuitiva para gerenciamento de compromissos. A aplicação exibe eventos em um formato de calendário, permitindo aos usuários navegar entre diferentes visualizações e gerenciar seus compromissos.
 
-# Entrar no diretório
-cd agenda-webapp
+## 🚀 Características
 
-# Instalar dependências
+- Interface minimalista e responsiva
+- Visualização mensal, semanal e diária de compromissos
+- Criação, edição e exclusão de eventos
+- Classificação de eventos por categorias e cores
+- Sistema de lembretes e notificações
+- Persistência de dados local com localStorage
+
+## ⚙️ Instalação
+
+Para executar o projeto localmente, siga estas etapas:
+
+```bash
+# Clone o repositório
+git clone https://github.com/PedroMaxis/shadow-calendar.git
+
+# Navegue até o diretório do projeto
+cd shadow-calendar
+
+# Instale as dependências
 npm install
 
-# Iniciar servidor de desenvolvimento
+# Inicie o servidor de desenvolvimento
 npm run dev
-Pré-requisitos
+```
+## 👨‍💻 Autor
 
-Node.js
-npm
-MongoDB
-
-Funcionalidades
-
-Cadastro de eventos
-Visualização de agenda
-Edição de compromissos
-
-Licença
-MIT
+Pedro Maxis - [GitHub](https://github.com/PedroMaxis)
