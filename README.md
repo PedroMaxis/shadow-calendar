@@ -35,3 +35,6 @@ npm run dev
 ## 👨‍💻 Autor
 
 Pedro Maxis - [GitHub](https://github.com/PedroMaxis)
+
+
+**Desenvolvido com Vibe Coding** 
