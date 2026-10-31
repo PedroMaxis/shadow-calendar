@@ -1,155 +1,144 @@
-
-import React from "react";
-import { useEvents } from "@/contexts/EventContext";
+import { useMemo } from "react";
 import {
-  format,
-  startOfMonth,
-  endOfMonth,
   eachDayOfInterval,
-  isSameMonth,
+  endOfMonth,
+  endOfWeek,
+  format,
   isSameDay,
-  parseISO,
+  isSameMonth,
   isToday,
-  getDay,
-  addDays,
-  subDays,
+  startOfDay,
+  startOfMonth,
+  startOfWeek,
 } from "date-fns";
-import { Badge } from "@/components/ui/badge";
+import { ptBR } from "date-fns/locale";
+import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { CATEGORIES, type Occurrence } from "@/lib/events";
+import { useEvents } from "@/contexts/event-context";
 
 interface MonthViewProps {
   onEventClick: (eventId: string) => void;
+  onCreate: (date: Date) => void;
 }
 
-const MonthView: React.FC<MonthViewProps> = ({ onEventClick }) => {
-  const { events, selectedDate, filteredEvents, activeFilter, setSelectedDate } = useEvents();
-  
-  const activeEvents = filteredEvents(activeFilter);
-  
-  const monthStart = startOfMonth(selectedDate);
-  const monthEnd = endOfMonth(selectedDate);
-  const days = eachDayOfInterval({ start: monthStart, end: monthEnd });
-  
-  // Calculate days needed before the start of the month to fill the calendar grid
-  const dayOfWeekStart = getDay(monthStart);
-  const prefixDays = Array.from({ length: dayOfWeekStart }).map((_, i) => 
-    subDays(monthStart, dayOfWeekStart - i)
-  ).reverse();
-  
-  // Calculate days needed after the end of the month to fill the calendar grid
-  const lastDay = days[days.length - 1];
-  const dayOfWeekEnd = getDay(lastDay);
-  const suffixDays = Array.from({ length: 6 - dayOfWeekEnd }).map((_, i) => 
-    addDays(lastDay, i + 1)
-  );
-  
-  const allDays = [...prefixDays, ...days, ...suffixDays];
-  
-  // Split days into weeks
-  const weeks = [];
-  for (let i = 0; i < allDays.length; i += 7) {
-    weeks.push(allDays.slice(i, i + 7));
-  }
-  
-  const getEventsForDay = (day: Date) => {
-    return activeEvents.filter(event => isSameDay(new Date(event.date), day));
-  };
+const MAX_CHIPS = 3;
+const WEEKDAYS = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
 
-  const handleDayClick = (day: Date) => {
-    setSelectedDate(day);
-  };
+const MonthView = ({ onEventClick, onCreate }: MonthViewProps) => {
+  const { selectedDate, setSelectedDate, setView, getOccurrences } = useEvents();
 
-  const getCategoryColor = (category: string) => {
-    switch (category) {
-      case 'work':
-        return 'bg-blue-500';
-      case 'personal':
-        return 'bg-green-500';
-      case 'health':
-        return 'bg-red-500';
-      case 'meeting':
-        return 'bg-yellow-500';
-      case 'other':
-        return 'bg-purple-500';
-      default:
-        return 'bg-gray-500';
+  const days = useMemo(() => {
+    const first = startOfWeek(startOfMonth(selectedDate), { weekStartsOn: 0 });
+    const last = endOfWeek(endOfMonth(selectedDate), { weekStartsOn: 0 });
+    return eachDayOfInterval({ start: first, end: last });
+  }, [selectedDate]);
+
+  const byDay = useMemo(() => {
+    const map = new Map<string, Occurrence[]>();
+    const occs = getOccurrences(days[0], new Date(days[days.length - 1].getTime() + 86_399_000));
+    for (const occ of occs) {
+      // eventos que passam da meia-noite aparecem em todos os dias que tocam
+      const last = startOfDay(new Date(Math.max(occ.start.getTime(), occ.end.getTime() - 1)));
+      for (const d of eachDayOfInterval({ start: startOfDay(occ.start), end: last })) {
+        const key = format(d, "yyyy-MM-dd");
+        map.set(key, [...(map.get(key) ?? []), occ]);
+      }
     }
+    return map;
+  }, [days, getOccurrences]);
+
+  const openDay = (day: Date) => {
+    setSelectedDate(day);
+    setView("day");
   };
 
   return (
-    <div className="overflow-hidden rounded-lg border border-border">
-      <div className="grid grid-cols-7 bg-secondary">
-        {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
-          <div
-            key={day}
-            className="p-2 text-center text-sm font-medium"
-          >
-            {day}
+    <div className="overflow-hidden rounded-xl border border-border bg-card">
+      <div className="grid grid-cols-7 border-b border-border bg-muted/40">
+        {WEEKDAYS.map((d) => (
+          <div key={d} className="px-2 py-2 text-center text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            {d}
           </div>
         ))}
       </div>
-      
-      <div className="grid grid-cols-7 border-t border-border">
-        {weeks.map((week, weekIndex) => (
-          <React.Fragment key={weekIndex}>
-            {week.map((day) => {
-              const dayEvents = getEventsForDay(day);
-              const isSelected = isSameDay(day, selectedDate);
-              const isCurrentMonth = isSameMonth(day, monthStart);
-              
-              return (
-                <div
-                  key={day.toString()}
+
+      <div className="grid grid-cols-7" role="grid" aria-label={format(selectedDate, "MMMM 'de' yyyy", { locale: ptBR })}>
+        {days.map((day) => {
+          const occs = byDay.get(format(day, "yyyy-MM-dd")) ?? [];
+          const inMonth = isSameMonth(day, selectedDate);
+          const selected = isSameDay(day, selectedDate);
+          const label = `${format(day, "EEEE, d 'de' MMMM", { locale: ptBR })}, ${
+            occs.length === 0 ? "sem eventos" : occs.length === 1 ? "1 evento" : `${occs.length} eventos`
+          }`;
+
+          return (
+            <div
+              key={day.toISOString()}
+              role="gridcell"
+              aria-selected={selected}
+              className={cn(
+                "group relative min-h-[84px] border-b border-r border-border p-1 sm:min-h-[116px] [&:nth-child(7n)]:border-r-0",
+                !inMonth && "bg-muted/30",
+                selected && "bg-accent/60"
+              )}
+            >
+              <div className="flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => openDay(day)}
+                  aria-label={label}
                   className={cn(
-                    "min-h-[100px] border-r border-b border-border p-1 transition-colors",
-                    !isCurrentMonth && "bg-muted/50 text-muted-foreground",
-                    isSelected && "bg-accent",
-                    isToday(day) && "font-bold"
+                    "inline-flex h-7 w-7 items-center justify-center rounded-full text-sm transition-colors hover:bg-accent",
+                    !inMonth && "text-muted-foreground",
+                    isToday(day) && "bg-primary font-semibold text-primary-foreground hover:bg-primary"
                   )}
-                  onClick={() => handleDayClick(day)}
                 >
-                  <div className="flex justify-between">
-                    <span className={cn(
-                      "inline-flex h-6 w-6 items-center justify-center rounded-full text-sm",
-                      isToday(day) && "bg-primary text-primary-foreground"
-                    )}>
-                      {format(day, "d")}
-                    </span>
-                    {dayEvents.length > 0 && (
-                      <span className="inline-flex items-center justify-center rounded bg-primary/10 px-1 text-xs">
-                        {dayEvents.length}
-                      </span>
-                    )}
-                  </div>
-                  
-                  <div className="mt-1 space-y-1 overflow-y-auto max-h-[80px]">
-                    {dayEvents.slice(0, 3).map((event) => (
-                      <div
-                        key={event.id}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onEventClick(event.id);
-                        }}
-                        className={cn(
-                          "text-xs px-1 py-0.5 truncate rounded cursor-pointer transition-colors",
-                          event.completed ? "line-through opacity-50" : "",
-                          getCategoryColor(event.category)
-                        )}
-                      >
-                        {event.title}
-                      </div>
-                    ))}
-                    {dayEvents.length > 3 && (
-                      <div className="text-xs text-muted-foreground px-1">
-                        +{dayEvents.length - 3} more
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </React.Fragment>
-        ))}
+                  {format(day, "d")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onCreate(day)}
+                  aria-label={`Adicionar evento em ${format(day, "d 'de' MMMM", { locale: ptBR })}`}
+                  className="rounded p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-accent focus-visible:opacity-100 group-hover:opacity-100"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                </button>
+              </div>
+
+              <ul className="mt-1 space-y-0.5">
+                {occs.slice(0, MAX_CHIPS).map((occ) => (
+                  <li key={occ.key}>
+                    <button
+                      type="button"
+                      onClick={() => onEventClick(occ.event.id)}
+                      title={`${format(occ.start, "HH:mm")} · ${occ.event.title}`}
+                      className={cn(
+                        "flex w-full items-center gap-1 truncate rounded border-l-2 px-1.5 py-0.5 text-left text-xs transition-opacity hover:opacity-80",
+                        CATEGORIES[occ.event.category].chip,
+                        occ.event.completed && "line-through opacity-50"
+                      )}
+                    >
+                      <span className="hidden shrink-0 tabular-nums opacity-70 sm:inline">{format(occ.start, "HH:mm")}</span>
+                      <span className="truncate">{occ.event.title}</span>
+                    </button>
+                  </li>
+                ))}
+                {occs.length > MAX_CHIPS && (
+                  <li>
+                    <button
+                      type="button"
+                      onClick={() => openDay(day)}
+                      className="px-1.5 text-xs text-muted-foreground hover:text-foreground hover:underline"
+                    >
+                      +{occs.length - MAX_CHIPS} mais
+                    </button>
+                  </li>
+                )}
+              </ul>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

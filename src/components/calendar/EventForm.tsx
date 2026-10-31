@@ -1,229 +1,277 @@
-
-import { useState, useEffect } from "react";
-import { useEvents, Event, EventCategory } from "@/contexts/EventContext";
+import { useState } from "react";
+import { addMinutes, differenceInMinutes, format } from "date-fns";
+import { ptBR } from "date-fns/locale";
+import { CalendarIcon, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Calendar } from "@/components/ui/calendar";
-import { format } from "date-fns";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { cn } from "@/lib/utils";
-import { CalendarIcon, Trash2 } from "lucide-react";
+  CATEGORIES,
+  CATEGORY_ORDER,
+  REMINDER_OPTIONS,
+  REPEAT_LABELS,
+  type CalendarEvent,
+  type EventCategory,
+  type RepeatRule,
+} from "@/lib/events";
+import { useEvents } from "@/contexts/event-context";
 
 interface EventFormProps {
-  isOpen: boolean;
-  onClose: () => void;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  /** Evento em edição; vazio = novo evento */
   eventId?: string;
+  /** Data/hora de início sugerida para um novo evento */
+  defaultStart?: Date;
 }
 
-const EventForm: React.FC<EventFormProps> = ({ isOpen, onClose, eventId }) => {
+const toTime = (d: Date) => format(d, "HH:mm");
+const withTime = (day: Date, time: string): Date => {
+  const [h, m] = time.split(":").map(Number);
+  const d = new Date(day);
+  d.setHours(h || 0, m || 0, 0, 0);
+  return d;
+};
+
+const FormBody = ({ eventId, defaultStart, onClose }: { eventId?: string; defaultStart?: Date; onClose: () => void }) => {
   const { events, addEvent, updateEvent, deleteEvent } = useEvents();
-  
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [date, setDate] = useState<Date>(new Date());
-  const [time, setTime] = useState("12:00");
-  const [category, setCategory] = useState<EventCategory>("other");
-  const [completed, setCompleted] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
+  const editing = eventId ? events.find((e) => e.id === eventId) : undefined;
 
-  useEffect(() => {
-    if (eventId) {
-      const event = events.find((e) => e.id === eventId);
-      if (event) {
-        setTitle(event.title);
-        setDescription(event.description || "");
-        setDate(new Date(event.date));
-        setTime(format(new Date(event.date), "HH:mm"));
-        setCategory(event.category);
-        setCompleted(event.completed);
-        setIsEditing(true);
-      }
-    } else {
-      resetForm();
-      setIsEditing(false);
-    }
-  }, [eventId, events]);
+  const initialStart = editing?.start ?? defaultStart ?? new Date();
+  const initialEnd = editing?.end ?? addMinutes(initialStart, 60);
 
-  const resetForm = () => {
-    setTitle("");
-    setDescription("");
-    setDate(new Date());
-    setTime("12:00");
-    setCategory("other");
-    setCompleted(false);
+  const [title, setTitle] = useState(editing?.title ?? "");
+  const [description, setDescription] = useState(editing?.description ?? "");
+  const [day, setDay] = useState<Date>(initialStart);
+  const [startTime, setStartTime] = useState(toTime(initialStart));
+  const [endTime, setEndTime] = useState(toTime(initialEnd));
+  const [category, setCategory] = useState<EventCategory>(editing?.category ?? "personal");
+  const [reminder, setReminder] = useState<number | null>(editing?.reminder ?? null);
+  const [repeat, setRepeat] = useState<RepeatRule>(editing?.repeat ?? "none");
+  const [completed, setCompleted] = useState(editing?.completed ?? false);
+  const [error, setError] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  // ao mudar o início, mantém a duração do evento
+  const changeStart = (value: string) => {
+    const duration = Math.max(15, differenceInMinutes(withTime(day, endTime), withTime(day, startTime)));
+    setStartTime(value);
+    if (value) setEndTime(toTime(addMinutes(withTime(day, value), duration)));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Parse time and create a full date with time
-    const [hours, minutes] = time.split(":").map(Number);
-    const fullDate = new Date(date);
-    fullDate.setHours(hours, minutes, 0, 0);
-    
-    const eventData = {
-      title,
-      description,
-      date: fullDate,
-      category,
-      completed,
-    };
-    
-    if (isEditing && eventId) {
-      updateEvent(eventId, eventData);
-    } else {
-      addEvent(eventData);
+    const start = withTime(day, startTime);
+    const end = withTime(day, endTime);
+    if (end <= start) {
+      setError("O horário final precisa ser depois do inicial.");
+      return;
     }
-    
+    const data: Omit<CalendarEvent, "id"> = {
+      title: title.trim(),
+      description: description.trim(),
+      start,
+      end,
+      category,
+      reminder,
+      repeat,
+      completed: repeat === "none" ? completed : false,
+    };
+    if (editing) updateEvent(editing.id, data);
+    else addEvent(data);
     onClose();
   };
 
-  const handleDelete = () => {
-    if (isEditing && eventId) {
-      deleteEvent(eventId);
-      onClose();
-    }
-  };
-
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>{isEditing ? "Edit Event" : "Add New Event"}</DialogTitle>
-        </DialogHeader>
-        
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="title">Title</Label>
-            <Input
-              id="title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Event title"
-              required
-            />
-          </div>
-          
-          <div className="space-y-2">
-            <Label htmlFor="description">Description</Label>
-            <Textarea
-              id="description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Event description"
-              rows={3}
-            />
-          </div>
-          
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Date</Label>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className={cn(
-                      "w-full justify-start text-left font-normal",
-                      !date && "text-muted-foreground"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {date ? format(date, "MMM dd, yyyy") : "Select date"}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0 pointer-events-auto">
-                  <Calendar
-                    mode="single"
-                    selected={date}
-                    onSelect={(date) => date && setDate(date)}
-                    initialFocus
-                    className="p-3"
-                  />
-                </PopoverContent>
-              </Popover>
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="time">Time</Label>
-              <Input
-                id="time"
-                type="time"
-                value={time}
-                onChange={(e) => setTime(e.target.value)}
-                required
-              />
-            </div>
-          </div>
-          
-          <div className="space-y-2">
-            <Label htmlFor="category">Category</Label>
-            <Select
-              value={category}
-              onValueChange={(value) => setCategory(value as EventCategory)}
-            >
-              <SelectTrigger id="category">
-                <SelectValue placeholder="Select category" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="work">Work</SelectItem>
-                <SelectItem value="personal">Personal</SelectItem>
-                <SelectItem value="health">Health</SelectItem>
-                <SelectItem value="meeting">Meeting</SelectItem>
-                <SelectItem value="other">Other</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          
-          {isEditing && (
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="completed"
-                checked={completed}
-                onCheckedChange={(checked) => setCompleted(checked as boolean)}
-              />
-              <Label htmlFor="completed">Mark as completed</Label>
-            </div>
-          )}
-          
-          <DialogFooter className="flex justify-between">
-            {isEditing && (
+    <form onSubmit={submit} className="space-y-4">
+      <div className="space-y-2">
+        <Label htmlFor="ev-title">Título</Label>
+        <Input
+          id="ev-title"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Ex.: Dentista"
+          maxLength={120}
+          required
+          autoFocus
+        />
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="space-y-2 sm:col-span-1">
+          <Label>Data</Label>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className="w-full justify-start font-normal">
+                <CalendarIcon className="h-4 w-4" />
+                {format(day, "dd/MM/yyyy")}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <Calendar mode="single" selected={day} onSelect={(d) => d && setDay(d)} locale={ptBR} initialFocus />
+            </PopoverContent>
+          </Popover>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="ev-start">Início</Label>
+          <Input id="ev-start" type="time" value={startTime} onChange={(e) => changeStart(e.target.value)} required />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="ev-end">Fim</Label>
+          <Input
+            id="ev-end"
+            type="time"
+            value={endTime}
+            onChange={(e) => {
+              setEndTime(e.target.value);
+              setError(null);
+            }}
+            required
+          />
+        </div>
+      </div>
+      {error && (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
+      )}
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="space-y-2">
+          <Label htmlFor="ev-category">Categoria</Label>
+          <Select value={category} onValueChange={(v) => setCategory(v as EventCategory)}>
+            <SelectTrigger id="ev-category">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {CATEGORY_ORDER.map((c) => (
+                <SelectItem key={c} value={c}>
+                  <span className="flex items-center gap-2">
+                    <span className={`h-2 w-2 rounded-full ${CATEGORIES[c].dot}`} />
+                    {CATEGORIES[c].label}
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="ev-repeat">Repetição</Label>
+          <Select value={repeat} onValueChange={(v) => setRepeat(v as RepeatRule)}>
+            <SelectTrigger id="ev-repeat">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {(Object.keys(REPEAT_LABELS) as RepeatRule[]).map((r) => (
+                <SelectItem key={r} value={r}>
+                  {REPEAT_LABELS[r]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="ev-reminder">Lembrete</Label>
+        <Select
+          value={reminder === null ? "none" : String(reminder)}
+          onValueChange={(v) => setReminder(v === "none" ? null : Number(v))}
+        >
+          <SelectTrigger id="ev-reminder">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {REMINDER_OPTIONS.map((o) => (
+              <SelectItem key={String(o.value)} value={o.value === null ? "none" : String(o.value)}>
+                {o.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="ev-desc">Descrição</Label>
+        <Textarea
+          id="ev-desc"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="Detalhes, local, link da reunião..."
+          rows={3}
+          maxLength={2000}
+        />
+      </div>
+
+      {editing && repeat === "none" && (
+        <div className="flex items-center gap-2">
+          <Checkbox id="ev-done" checked={completed} onCheckedChange={(c) => setCompleted(c === true)} />
+          <Label htmlFor="ev-done">Marcar como concluído</Label>
+        </div>
+      )}
+
+      <DialogFooter className="gap-2 sm:justify-between">
+        {editing ? (
+          confirmDelete ? (
+            <div className="flex items-center gap-2">
               <Button
                 type="button"
                 variant="destructive"
-                onClick={handleDelete}
-                className="flex items-center gap-1"
+                onClick={() => {
+                  deleteEvent(editing.id);
+                  onClose();
+                }}
               >
-                <Trash2 className="h-4 w-4" /> Delete
+                Confirmar exclusão
               </Button>
-            )}
-            <div>
-              <Button type="button" variant="outline" onClick={onClose} className="mr-2">
-                Cancel
+              <Button type="button" variant="ghost" onClick={() => setConfirmDelete(false)}>
+                Voltar
               </Button>
-              <Button type="submit">{isEditing ? "Update" : "Add"}</Button>
             </div>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+          ) : (
+            <Button type="button" variant="ghost" className="text-destructive" onClick={() => setConfirmDelete(true)}>
+              <Trash2 className="h-4 w-4" /> Excluir
+            </Button>
+          )
+        ) : (
+          <span />
+        )}
+        <div className="flex gap-2">
+          <Button type="button" variant="outline" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button type="submit">{editing ? "Salvar" : "Criar evento"}</Button>
+        </div>
+      </DialogFooter>
+    </form>
   );
 };
+
+const EventForm = ({ open, onOpenChange, eventId, defaultStart }: EventFormProps) => (
+  <Dialog open={open} onOpenChange={onOpenChange}>
+    <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+      <DialogHeader>
+        <DialogTitle>{eventId ? "Editar evento" : "Novo evento"}</DialogTitle>
+        <DialogDescription>
+          {eventId ? "Altere os dados do evento." : "Preencha os dados para adicionar à sua agenda."}
+        </DialogDescription>
+      </DialogHeader>
+      {open && <FormBody eventId={eventId} defaultStart={defaultStart} onClose={() => onOpenChange(false)} />}
+    </DialogContent>
+  </Dialog>
+);
 
 export default EventForm;
